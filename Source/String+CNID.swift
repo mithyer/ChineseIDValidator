@@ -13,7 +13,7 @@ extension String {
     
     // typeOption: 默认15和18位都验证
     // district: 默认地区验证只验证到一级行政区，最高到三级行政区
-    // 这里只填写了一级和部分二三级，其他需自行填写: http://www.stats.gov.cn/tjsj/tjbz/xzqhdm/，一级填前2位，二级填前4位，三级填前6位， 此表最好从服务端获取
+    // 这里只填写了一级和部分二三级，其他需自行填写: http://www.stats.gov.cn/tjsj/tjbz/xzqhdm/，此表最好从服务端获取
     public func CNIDValidator(withTypeOption typeOption: CNID.IDTypeOption = CNID.IDTypeOption.both,
                        toDistrict district: CNID.DistrictType = .district1,
                        withForm form: [String: [String: String]] = CNID.districtForm) -> CNID.Validator {
@@ -78,7 +78,7 @@ public class CNID {
             guard let type = id.idType, typeOption.contains(IDTypeOption(rawValue: type.rawValue)) else {
                 return
             }
-            guard let districtInfo = id.districtInfo(withForm: form), districtInfo.keys.contains(district) else {
+            guard let districtInfo = id.districtInfo(toDistrict: district) else {
                 return
             }
             guard let birthdayInfo = id.birthDayInfo(ofType: type) else {
@@ -122,7 +122,7 @@ public class CNID {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd"
             let dateStr = formatter.string(from: date)
-            let sequence = String.init(format: "%.3d", arc4random()%999)
+            let sequence = String.init(format: "%.3d", arc4random()%1000)
             if type == .old15 {
                 self.id = districtCode + dateStr.subString(ofRange: NSRange(location: 2, length: 6))! + sequence
                 return
@@ -137,17 +137,17 @@ public class CNID {
     
     public static let districtForm = [
         "d1":
-            ["11": "北京", "12": "天津", "13": "", "14": "", "15": "",
-             "21": "", "22": "", "23": "",
-             "31": "", "32": "", "33": "", "34": "", "35": "", "36": "", "37": "",
-             "41": "", "42": "", "43": "", "44": "", "45": "", "46": "",
-             "50": "", "51": "", "52": "", "53": "", "54": "",
-             "61": "", "62": "", "63": "", "64": "", "65": "",
-             "71": "",
-             "81": "", "82": "",
-             "91": ""],
+            ["110000": "北京", "120000": "天津", "130000": "", "140000": "", "150000": "",
+             "210000": "", "220000": "", "230000": "",
+             "310000": "", "320000": "", "330000": "", "340000": "", "350000": "", "360000": "", "370000": "",
+             "410000": "", "420000": "", "430000": "", "440000": "", "450000": "", "460000": "",
+             "500000": "", "510000": "", "520000": "", "530000": "", "540000": "",
+             "610000": "", "620000": "", "630000": "", "640000": "", "650000": "",
+             "710000": "",
+             "810000": "", "820000": "",
+             "910000": ""],
         "d2":
-            ["1101": "市辖区", "1201": "市辖区"],
+            ["110100": "市辖区", "120100": "市辖区"],
         "d3":
             ["110101": "东城区", "120101": "和平区"]
     ]
@@ -177,22 +177,65 @@ extension String {
     }
 
     
-    func districtInfo(withForm form: [String: [String: String]] = CNID.districtForm) -> [CNID.DistrictType : (code: String, name: String)]? {
+    func districtInfo(toDistrict district: CNID.DistrictType, withForm form: [String: [String: String]] = CNID.districtForm) -> [CNID.DistrictType : (code: String, name: String)]? {
         let range = NSRange(location: 0, length: 6)
         guard let districtCode = self.subString(ofRange: range) else {
             return nil
         }
         var districtInfo = [CNID.DistrictType : (code: String, name: String)]()
 
-        for (district, dic) in form {
-            for (code, name) in dic {
+        let district1Form = form[CNID.DistrictType.district1.rawValue]!
+        for (var code, name) in district1Form {
+            code = code.subString(ofRange: NSMakeRange(0, 2))!
+            if districtCode.hasPrefix(code) {
+                districtInfo[.district1] = (code + "0000", name)
+                break
+            }
+        }
+        if district == .district1, let _ = districtInfo[.district1] {
+            return districtInfo
+        }
+        
+        let district2Form = form[CNID.DistrictType.district2.rawValue]!
+        if district == .district2 || district == .district3 {
+            for (var code, name) in district2Form {
+                code = code.subString(ofRange: NSMakeRange(0, 4))!
                 if districtCode.hasPrefix(code) {
-                    districtInfo[CNID.DistrictType(rawValue: district)!] = (code, name)
+                    districtInfo[.district2] = (code + "00", name)
                     break
                 }
             }
         }
-        return districtInfo.count > 0 ? districtInfo : nil
+        if district == .district2 {
+            if let _ = districtInfo[.district2] {
+                return districtInfo
+            }
+            if let info = districtInfo[.district1], district1Form.keys.contains(info.code) {
+                return districtInfo
+            }
+        }
+        
+        let district3Form = form[CNID.DistrictType.district3.rawValue]!
+        if district == .district3 {
+            for (var code, name) in district3Form {
+                code = code.subString(ofRange: NSMakeRange(0, 6))!
+                if districtCode.hasPrefix(code) {
+                    districtInfo[.district3] = (code, name)
+                    break
+                }
+            }
+            if let _ = districtInfo[.district3] {
+                return districtInfo
+            }
+            if let info = districtInfo[.district2], district2Form.keys.contains(info.code) {
+                return districtInfo
+            }
+            if let info = districtInfo[.district1], district1Form.keys.contains(info.code) {
+                return districtInfo
+            }
+        }
+
+        return nil
     }
     
     func birthDayInfo(ofType type: CNID.IDType) -> (dateString: String, date: Date)? {

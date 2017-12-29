@@ -28,7 +28,7 @@ let validator = id.CNIDValidator(withTypeOption: .both, // typeOption: 验证的
                                  toDistrict: .district1, // district: 默认验证只验证到一级行政区，最高到三级行政区
                                  withForm: CNID.districtForm) // form: 行政区表单，我只填写了一级和部分二三级，
                                                               // 若要验证到二级以上需自行根据此网址填写: http://www.stats.gov.cn/tjsj/tjbz/xzqhdm/，
-                                                              // 一级填前2位，二级填前4位，三级填满6位，也可从服务端获取，数据结构见CNID.districtForm
+                                                              // 可从服务端获取，数据结构见CNID.districtForm
 ```
 
 
