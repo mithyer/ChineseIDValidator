@@ -107,7 +107,7 @@ public class CNID {
     public class Faker {
         
         let id: String
-        init(_ typeOption: CNID.IDTypeOption = .both, withForm form: [String: [String: String]] = CNID.districtForm) {
+        init(withTypeOption typeOption: CNID.IDTypeOption = .both, withForm form: [String: [String: String]] = CNID.districtForm) {
             let type: CNID.IDType = {
                 switch typeOption {
                 case .old15: return CNID.IDType.old15
