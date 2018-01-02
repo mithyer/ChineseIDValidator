@@ -26,7 +26,8 @@ class ChineseIDValidatorTests: XCTestCase {
         let invalidList: [String] = ["1231231231", "123456457845123", "512345645125487545"]
         
         for valid in validList {
-            XCTAssert(valid.CNIDValidator().isValid, valid)
+            let validator = valid.CNIDValidator()
+            XCTAssert(validator.isValid, valid)
         }
         for invalid in invalidList {
             XCTAssert(!invalid.CNIDValidator().isValid, invalid)

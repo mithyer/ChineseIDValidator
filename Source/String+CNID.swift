@@ -12,16 +12,96 @@ import Foundation
 extension String {
     
     // typeOption: 默认15和18位都验证
-    // district: 默认地区验证只验证到一级行政区，最高到三级行政区
-    // 这里只填写了一级和部分二三级，其他需自行填写: http://www.stats.gov.cn/tjsj/tjbz/xzqhdm/，此表最好从服务端获取
-    public func CNIDValidator(withTypeOption typeOption: CNID.IDTypeOption = CNID.IDTypeOption.both,
-                       toDistrict district: CNID.DistrictType = .district1,
-                       withForm form: [String: [String: String]] = CNID.districtForm) -> CNID.Validator {
-        return CNID.Validator.init(self, withTypeOption: typeOption, toDistrict: district, withForm: form)
+    public func CNIDValidator(withTypeOption typeOption: CNID.IDTypeOption = CNID.IDTypeOption.both) -> CNID.Validator {
+        return CNID.Validator.init(self, withTypeOption: typeOption)
     }
     
 }
 
+
+extension String {
+    
+    func subString(ofRange range: NSRange) -> String? {
+        if range.location + range.length > self.count {
+            return nil
+        }
+        let startIdx = self.index(self.startIndex, offsetBy: range.location)
+        let endIdx = self.index(startIdx, offsetBy: range.length)
+        return String(self[startIdx..<endIdx])
+    }
+    
+    var idType: CNID.IDType? {
+        switch self.count {
+        case 15:
+            return .old15
+        case 18:
+            return .new18
+        default:
+            return nil
+        }
+    }
+
+    
+    func districtInfo() -> [CNID.DistrictType : (code: String, name: String)]? {
+        var info = [CNID.DistrictType : (code: String, name: String)]()
+        let districtFormDic = CNID.districtFormDic
+        if let code = self.subString(ofRange: NSMakeRange(0, 2)), let name = districtFormDic[code + "0000"] {
+            info[.district1] = (code + "0000", name)
+        } else {
+            return nil
+        }
+        if let code = self.subString(ofRange: NSMakeRange(0, 4)), let name = districtFormDic[code + "00"] {
+            info[.district2] = (code + "00", name)
+        } else {
+            return info
+        }
+        if let name = districtFormDic[self] {
+            info[.district3] = (self, name)
+        }
+        return info
+    }
+    
+    func birthDayInfo(ofType type: CNID.IDType) -> (dateString: String, date: Date)? {
+        let range = NSRange(location: 6, length: type == .old15 ? 6 : 8)
+        guard var dateStr = self.subString(ofRange: range) else {
+            return nil
+        }
+        if type == .old15 {
+            dateStr = "19" + dateStr
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.locale = Locale(identifier: "zh_Hans")
+        let date = formatter.date(from: dateStr)
+        return nil != date ? (dateStr, date!) : nil
+    }
+    
+    func sequenceCode(ofType type: CNID.IDType) -> String? {
+        let range = NSRange(location: type == .old15 ? 12 : 14, length: 3)
+        return self.subString(ofRange: range)
+    }
+    
+    func validateCode(ofType type: CNID.IDType) -> String? {
+        guard let range = type == .new18 ? NSRange(location: 17, length: 1) : nil else {
+            return nil
+        }
+        return self.subString(ofRange: range)
+    }
+    
+    func resCode() -> String? {
+        let weight = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
+        guard let str = self.subString(ofRange: NSRange(location: 0, length: weight.count)) else {
+            return nil
+        }
+        let validateForm = ["1", "0", "X", "9", "8", "7", "6", "5", "4", "3", "2"]
+        var sum = 0
+        for (idx, value) in str.enumerated() {
+            sum += Int(String(value))! * weight[idx]
+        }
+        return validateForm[sum%validateForm.count]
+    }
+    
+}
 
 public class CNID {
     
@@ -72,13 +152,13 @@ public class CNID {
         private(set) var isValid: Bool = false
         private(set) var info: Info?
         
-        init(_ id: String, withTypeOption typeOption: IDTypeOption = IDTypeOption.both, toDistrict district: CNID.DistrictType = .district1, withForm form: [String: [String: String]] = CNID.districtForm) {
+        init(_ id: String, withTypeOption typeOption: IDTypeOption = IDTypeOption.both) {
             
             self.id = id
             guard let type = id.idType, typeOption.contains(IDTypeOption(rawValue: type.rawValue)) else {
                 return
             }
-            guard let districtInfo = id.districtInfo(toDistrict: district) else {
+            guard let districtInfo = id.districtInfo() else {
                 return
             }
             guard let birthdayInfo = id.birthDayInfo(ofType: type) else {
@@ -107,7 +187,7 @@ public class CNID {
     public class Faker {
         
         let id: String
-        init(withTypeOption typeOption: CNID.IDTypeOption = .both, withForm form: [String: [String: String]] = CNID.districtForm) {
+        init(withTypeOption typeOption: CNID.IDTypeOption = .both) {
             let type: CNID.IDType = {
                 switch typeOption {
                 case .old15: return CNID.IDType.old15
@@ -115,7 +195,7 @@ public class CNID {
                 default: return arc4random()%2 == 0 ? .old15 : .new18
                 }
             }()
-            let codes = form[CNID.DistrictType.district3.rawValue]!.keys
+            let codes = CNID.districtFormDic.keys
             let idx: Int = Int(arc4random()%UInt32(codes.count))
             let districtCode = codes[codes.index(codes.startIndex, offsetBy: idx)]
             let date = Date.init(timeIntervalSinceNow: -Double(arc4random()%(100 * 365 * 24 * 3600)))
@@ -134,148 +214,63 @@ public class CNID {
         }
         
     }
-    
-    public static let districtForm = [
-        "d1":
-            ["110000": "北京", "120000": "天津", "130000": "", "140000": "", "150000": "",
-             "210000": "", "220000": "", "230000": "",
-             "310000": "", "320000": "", "330000": "", "340000": "", "350000": "", "360000": "", "370000": "",
-             "410000": "", "420000": "", "430000": "", "440000": "", "450000": "", "460000": "",
-             "500000": "", "510000": "", "520000": "", "530000": "", "540000": "",
-             "610000": "", "620000": "", "630000": "", "640000": "", "650000": "",
-             "710000": "",
-             "810000": "", "820000": "",
-             "910000": ""],
-        "d2":
-            ["110100": "市辖区", "120100": "市辖区"],
-        "d3":
-            ["110101": "东城区", "120101": "和平区"]
-    ]
+
 }
 
 
-extension String {
+// Mark: Districts Form
+
+extension CNID {
     
-    func subString(ofRange range: NSRange) -> String? {
-        if range.location + range.length > self.count {
-            return nil
+    static let districtFormDicURL = URL(fileURLWithPath: NSSearchPathForDirectoriesInDomains(FileManager.SearchPathDirectory.cachesDirectory, FileManager.SearchPathDomainMask.userDomainMask, true).first!).appendingPathComponent("CNID_DistrictsForm")
+    
+    static var districtFormDic: [String: String] = {
+        let fileManager = FileManager.default
+        if fileManager.isReadableFile(atPath: districtFormDicURL.path),
+            let data = try? Data.init(contentsOf: districtFormDicURL, options: Data.ReadingOptions.mappedIfSafe),
+            let dic = try? JSONDecoder().decode([String: String].self, from: data){
+            return dic
         }
-        let startIdx = self.index(self.startIndex, offsetBy: range.location)
-        let endIdx = self.index(startIdx, offsetBy: range.length)
-        return String(self[startIdx..<endIdx])
+        let url = Bundle.main.url(forResource: "CNID_DistrictsForm", withExtension: "json")!
+        let data = try! Data.init(contentsOf: url, options: Data.ReadingOptions.mappedIfSafe)
+        let dic = try! JSONDecoder().decode([String: String].self, from: data)
+        return dic
+    }()
+    
+    enum UpdateFormError: Error {
+        case wrongVersionFormat(version: String) // "version格式错误应为日期格式yyyyMMdd"
+        case newVersionShouldBigger(new: String, old: String) // "新version应大于旧version"
+        case formDicEmpty
+
     }
     
-    var idType: CNID.IDType? {
-        switch self.count {
-        case 15:
-            return .old15
-        case 18:
-            return .new18
-        default:
-            return nil
-        }
-    }
-
-    
-    func districtInfo(toDistrict district: CNID.DistrictType, withForm form: [String: [String: String]] = CNID.districtForm) -> [CNID.DistrictType : (code: String, name: String)]? {
-        let range = NSRange(location: 0, length: 6)
-        guard let districtCode = self.subString(ofRange: range) else {
-            return nil
-        }
-        var districtInfo = [CNID.DistrictType : (code: String, name: String)]()
-
-        let district1Form = form[CNID.DistrictType.district1.rawValue]!
-        for (var code, name) in district1Form {
-            code = code.subString(ofRange: NSMakeRange(0, 2))!
-            if districtCode.hasPrefix(code) {
-                districtInfo[.district1] = (code + "0000", name)
-                break
-            }
-        }
-        if district == .district1, let _ = districtInfo[.district1] {
-            return districtInfo
-        }
-        
-        let district2Form = form[CNID.DistrictType.district2.rawValue]!
-        if district == .district2 || district == .district3 {
-            for (var code, name) in district2Form {
-                code = code.subString(ofRange: NSMakeRange(0, 4))!
-                if districtCode.hasPrefix(code) {
-                    districtInfo[.district2] = (code + "00", name)
-                    break
-                }
-            }
-        }
-        if district == .district2 {
-            if let _ = districtInfo[.district2] {
-                return districtInfo
-            }
-            if let info = districtInfo[.district1], district1Form.keys.contains(info.code) {
-                return districtInfo
-            }
-        }
-        
-        let district3Form = form[CNID.DistrictType.district3.rawValue]!
-        if district == .district3 {
-            for (var code, name) in district3Form {
-                code = code.subString(ofRange: NSMakeRange(0, 6))!
-                if districtCode.hasPrefix(code) {
-                    districtInfo[.district3] = (code, name)
-                    break
-                }
-            }
-            if let _ = districtInfo[.district3] {
-                return districtInfo
-            }
-            if let info = districtInfo[.district2], district2Form.keys.contains(info.code) {
-                return districtInfo
-            }
-            if let info = districtInfo[.district1], district1Form.keys.contains(info.code) {
-                return districtInfo
-            }
-        }
-
-        return nil
-    }
-    
-    func birthDayInfo(ofType type: CNID.IDType) -> (dateString: String, date: Date)? {
-        let range = NSRange(location: 6, length: type == .old15 ? 6 : 8)
-        guard var dateStr = self.subString(ofRange: range) else {
-            return nil
-        }
-        if type == .old15 {
-            dateStr = "19" + dateStr
-        }
+    public static func updateForm(formData: Data, version: String) throws {
+        var oldVersion = "20170731"
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd"
         formatter.locale = Locale(identifier: "zh_Hans")
-        let date = formatter.date(from: dateStr)
-        return nil != date ? (dateStr, date!) : nil
+
+        guard let newDate = formatter.date(from: version) else {
+            throw UpdateFormError.wrongVersionFormat(version: version)
+        }
+        if let date = (try? FileManager.default.attributesOfItem(atPath: districtFormDicURL.path)[FileAttributeKey.creationDate]) as? Date {
+            oldVersion = formatter.string(from: date)
+        }
+        guard version.compare(oldVersion) == ComparisonResult.orderedDescending else {
+            throw UpdateFormError.newVersionShouldBigger(new: version, old: oldVersion)
+        }
+        let dic = try JSONDecoder().decode([String: String].self, from: formData)
+        guard dic.count > 0 else {
+            throw UpdateFormError.formDicEmpty
+        }
+        self.districtFormDic = dic
+        try formData.write(to: districtFormDicURL, options: Data.WritingOptions.atomicWrite)
+        try FileManager.default.setAttributes([FileAttributeKey.creationDate : newDate], ofItemAtPath: districtFormDicURL.path)
     }
     
-    func sequenceCode(ofType type: CNID.IDType) -> String? {
-        let range = NSRange(location: type == .old15 ? 12 : 14, length: 3)
-        return self.subString(ofRange: range)
-    }
-    
-    func validateCode(ofType type: CNID.IDType) -> String? {
-        guard let range = type == .new18 ? NSRange(location: 17, length: 1) : nil else {
-            return nil
-        }
-        return self.subString(ofRange: range)
-    }
-    
-    func resCode() -> String? {
-        let weight = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
-        guard let str = self.subString(ofRange: NSRange(location: 0, length: weight.count)) else {
-            return nil
-        }
-        let validateForm = ["1", "0", "X", "9", "8", "7", "6", "5", "4", "3", "2"]
-        var sum = 0
-        for (idx, value) in str.enumerated() {
-            sum += Int(String(value))! * weight[idx]
-        }
-        return validateForm[sum%validateForm.count]
+    public static func updateForm(formDataDic: [String: String], version: String) throws {
+        let data = try JSONEncoder().encode(formDataDic)
+        try updateForm(formData: data, version: version)
     }
     
 }

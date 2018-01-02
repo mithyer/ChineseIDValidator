@@ -16,14 +16,7 @@ class ViewController: UIViewController {
         
         let id = "123456789012345678"
         
-        
-        
-        
-        let validator = id.CNIDValidator(withTypeOption: .both, // typeOption: 验证的类型，可以是老15位，或者新18位，默认都选
-                                         toDistrict: .district1, // district: 默认验证只验证到一级行政区，最高到三级行政区
-                                         withForm: CNID.districtForm) // form: 行政区表单，我只填写了一级和部分二三级，若要验证到二级以上需自行根据右边网址填写: http://www.stats.gov.cn/tjsj/tjbz/xzqhdm/，一级填前2位，二级填前4位，三级填前6位，也可从服务端获取， 数据结构见CNID.districtForm
-        
-        
+        let validator = id.CNIDValidator(withTypeOption: .both) // typeOption: 验证的类型，可以是老15位，或者新18位，默认都选
         let isValid = validator.isValid // 看是否合法
         if isValid {
             let info = validator.info!
@@ -36,6 +29,7 @@ class ViewController: UIViewController {
             let gender = info.gender
         }
         
+
     }
 
     override func didReceiveMemoryWarning() {
