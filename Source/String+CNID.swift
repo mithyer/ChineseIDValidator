@@ -120,10 +120,10 @@ public class CNID {
         public static let both = IDTypeOption(rawValue: IDType.new18.rawValue | IDType.old15.rawValue)
     }
     
-    public enum DistrictType: String {
-        case district1 = "d1"
-        case district2 = "d2"
-        case district3 = "d3"
+    public enum DistrictType {
+        case district1
+        case district2
+        case district3
     }
     
     public enum Gender {
@@ -202,7 +202,7 @@ public class CNID {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd"
             let dateStr = formatter.string(from: date)
-            let sequence = String.init(format: "%.3d", arc4random()%1000)
+            let sequence = String.init(format: "%.3d", arc4random()%999 + 1)
             if type == .old15 {
                 self.id = districtCode + dateStr.subString(ofRange: NSRange(location: 2, length: 6))! + sequence
                 return
@@ -244,12 +244,12 @@ extension CNID {
 
     }
     
-    public static func updateForm(formData: Data, version: String) throws {
+    private static func versionCheck(version: String) throws -> Date {
         var oldVersion = "20170731"
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd"
         formatter.locale = Locale(identifier: "zh_Hans")
-
+        
         guard let newDate = formatter.date(from: version) else {
             throw UpdateFormError.wrongVersionFormat(version: version)
         }
@@ -259,6 +259,12 @@ extension CNID {
         guard version.compare(oldVersion) == ComparisonResult.orderedDescending else {
             throw UpdateFormError.newVersionShouldBigger(new: version, old: oldVersion)
         }
+        return newDate
+    }
+    
+    public static func updateForm(formData: Data, version: String) throws {
+        let newDate = try versionCheck(version: version)
+        
         let dic = try JSONDecoder().decode([String: String].self, from: formData)
         guard dic.count > 0 else {
             throw UpdateFormError.formDicEmpty
@@ -269,8 +275,15 @@ extension CNID {
     }
     
     public static func updateForm(formDataDic: [String: String], version: String) throws {
+        let newDate = try versionCheck(version: version)
+
+        guard formDataDic.count > 0 else {
+            throw UpdateFormError.formDicEmpty
+        }
+        self.districtFormDic = formDataDic
         let data = try JSONEncoder().encode(formDataDic)
-        try updateForm(formData: data, version: version)
+        try data.write(to: districtFormDicURL, options: Data.WritingOptions.atomicWrite)
+        try FileManager.default.setAttributes([FileAttributeKey.creationDate : newDate], ofItemAtPath: districtFormDicURL.path)
     }
     
 }
